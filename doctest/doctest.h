@@ -6374,6 +6374,23 @@ std::vector<const IExceptionTranslator *> &getExceptionTranslators() noexcept {
 
 String translateActiveException() noexcept {
 #ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+    // Reentrancy guard: if a translator re-triggers exception translation while a
+    // translation is already in progress, return a controlled category instead of
+    // recursing into the same translator chain (the translator that caused the
+    // recursion is not invoked again). The guard resets on scope exit, so the next
+    // normal translation proceeds as usual.
+    static bool translationInProgress = false;
+    if (translationInProgress)
+        return "exception translation already in progress";
+    struct TranslationGuard {
+        bool &flag;
+        explicit TranslationGuard(bool &f) noexcept
+                : flag(f) {
+            flag = true;
+        }
+        ~TranslationGuard() { flag = false; }
+    } guard(translationInProgress);
+
     String res;
     auto &translators = getExceptionTranslators();
     for (auto &curr: translators)
