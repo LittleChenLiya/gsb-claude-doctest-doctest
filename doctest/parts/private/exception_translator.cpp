@@ -23,6 +23,19 @@ std::vector<const IExceptionTranslator *> &getExceptionTranslators() noexcept {
 
 String translateActiveException() noexcept {
 #ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+    // Re-entrancy guard: if a translator (directly or indirectly) triggers another exception
+    // translation while one is already in progress on this thread, the translators are not
+    // invoked again - a controlled category is returned instead so that the chain cannot
+    // recurse indefinitely. The flag is reset when the outermost translation finishes, so
+    // subsequent translations proceed normally with the original priority order.
+    static DOCTEST_THREAD_LOCAL bool translationInProgress = false;
+    if (translationInProgress)
+        return "<recursive exception translation>";
+    struct TranslationGuard {
+        ~TranslationGuard() { translationInProgress = false; }
+    } guard;
+    translationInProgress = true;
+    static_cast<void>(guard);
     String res;
     auto &translators = getExceptionTranslators();
     for (auto &curr: translators)
