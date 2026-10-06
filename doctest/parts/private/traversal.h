@@ -24,6 +24,11 @@ public:
         return m_activeSubcaseDepth;
     }
 
+    // the chain of currently entered subcases (root first) - used for path-based filtering
+    const std::vector<SubcaseSignature> &activeSubcases() const {
+        return m_activeSubcases;
+    }
+
     void resetForTestCase();
     void resetForRun();
     bool advance();
@@ -39,6 +44,7 @@ private:
     std::vector<size_t> m_decisionPath;
     size_t m_decisionDepth = 0;
     std::vector<size_t> m_enteredSubcaseDepths;
+    std::vector<SubcaseSignature> m_activeSubcases;
     size_t m_activeSubcaseDepth = 0;
 
     DecisionPoint &ensureDecisionPointAtCurrentDepth();

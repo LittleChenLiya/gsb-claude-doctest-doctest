@@ -100,6 +100,7 @@ doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_filters.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_path.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_platform.cpp DEFINES CMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}")
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_string.cpp)
+doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_subcase_path.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_traversal.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_xml.cpp)
 

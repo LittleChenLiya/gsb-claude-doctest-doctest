@@ -29,6 +29,16 @@ bool Subcase::checkFilters() {
         if (matchesAny(m_signature.m_name.c_str(), g_cs->filters[7], false, g_cs->case_sensitive))
             return true;
     }
+    if (!g_cs->subcase_path_plan.empty()) {
+        // select by the full parent chain so that nested subcases with the same leaf
+        // name under different parents are not mixed up by their last name alone
+        std::vector<String> chain;
+        for (const auto &active: g_cs->traversal.activeSubcases())
+            chain.push_back(active.m_name);
+        chain.push_back(m_signature.m_name);
+        if (!subcasePathSelected(chain, g_cs->subcase_path_plan, g_cs->case_sensitive))
+            return true;
+    }
     return false;
 }
 

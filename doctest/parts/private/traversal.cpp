@@ -28,6 +28,7 @@ void TraversalState::resetForTestCase() {
     m_decisionPath.clear();
     m_discoveredDecisionPath.clear();
     m_enteredSubcaseDepths.clear();
+    m_activeSubcases.clear();
     m_activeSubcaseDepth = 0;
     m_decisionDepth = 0;
 }
@@ -37,6 +38,7 @@ void TraversalState::resetForRun() {
     m_discoveredDecisionPath.clear();
     m_decisionDepth = 0;
     m_enteredSubcaseDepths.clear();
+    m_activeSubcases.clear();
 }
 
 bool TraversalState::advance() {
@@ -72,6 +74,7 @@ bool TraversalState::tryEnterSubcase(const SubcaseSignature &signature) {
         return false;
 
     m_enteredSubcaseDepths.push_back(m_decisionDepth);
+    m_activeSubcases.push_back(signature);
     m_activeSubcaseDepth++;
     m_decisionDepth++;
     return true;
@@ -80,6 +83,7 @@ bool TraversalState::tryEnterSubcase(const SubcaseSignature &signature) {
 void TraversalState::leaveSubcase() {
     m_decisionDepth = m_enteredSubcaseDepths.back();
     m_enteredSubcaseDepths.pop_back();
+    m_activeSubcases.pop_back();
     m_activeSubcaseDepth--;
 }
 

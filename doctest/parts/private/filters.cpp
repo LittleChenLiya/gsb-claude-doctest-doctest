@@ -49,6 +49,42 @@ bool matchesAny(const char *name, const std::vector<String> &filters, bool match
     return false;
 }
 
+SubcasePathPlan compileSubcasePathPlan(const std::vector<String> &pathFilters) {
+    SubcasePathPlan plan;
+    for (const auto &filter: pathFilters) {
+        const char *curr = filter.c_str();
+        if (*curr == '\0')
+            continue;
+        std::vector<String> path;
+        const char *begin = curr;
+        for (;; ++curr) {
+            if (*curr == '/' || *curr == '\0') {
+                path.emplace_back(begin, static_cast<String::size_type>(curr - begin));
+                if (*curr == '\0')
+                    break;
+                begin = curr + 1;
+            }
+        }
+        plan.push_back(path);
+    }
+    return plan;
+}
+
+bool subcasePathSelected(const std::vector<String> &chain, const SubcasePathPlan &plan, bool caseSensitive) {
+    if (plan.empty())
+        return true;
+    for (const auto &path: plan) {
+        const size_t shared = chain.size() < path.size() ? chain.size() : path.size();
+        size_t level = 0;
+        for (; level < shared; ++level)
+            if (!wildcmp(chain[level].c_str(), path[level].c_str(), caseSensitive))
+                break;
+        if (level == shared)
+            return true;
+    }
+    return false;
+}
+
 } // namespace detail
 } // namespace doctest
 

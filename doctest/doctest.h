@@ -4227,6 +4227,11 @@ public:
         return m_activeSubcaseDepth;
     }
 
+    // the chain of currently entered subcases (root first) - used for path-based filtering
+    const std::vector<SubcaseSignature> &activeSubcases() const {
+        return m_activeSubcases;
+    }
+
     void resetForTestCase();
     void resetForRun();
     bool advance();
@@ -4242,6 +4247,7 @@ private:
     std::vector<size_t> m_decisionPath;
     size_t m_decisionDepth = 0;
     std::vector<size_t> m_enteredSubcaseDepths;
+    std::vector<SubcaseSignature> m_activeSubcases;
     size_t m_activeSubcaseDepth = 0;
 
     DecisionPoint &ensureDecisionPointAtCurrentDepth();
@@ -4255,6 +4261,46 @@ private:
 DOCTEST_SUPPRESS_PRIVATE_WARNINGS_POP
 
 #endif // DOCTEST_PARTS_PRIVATE_TRAVERSAL
+#ifndef DOCTEST_PARTS_PRIVATE_FILTERS
+#define DOCTEST_PARTS_PRIVATE_FILTERS
+
+
+DOCTEST_SUPPRESS_PRIVATE_WARNINGS_PUSH
+
+#ifndef DOCTEST_CONFIG_DISABLE
+
+namespace doctest {
+namespace detail {
+
+// matching of a string against a wildcard mask (case sensitivity configurable) taken from
+// https://www.codeproject.com/Articles/1088/Wildcard-string-compare-globbing
+int wildcmp(const char *str, const char *wild, bool caseSensitive);
+
+// checks if the name matches any of the filters (and can be configured what to do when empty)
+bool matchesAny(const char *name, const std::vector<String> &filters, bool matchEmpty, bool caseSensitive);
+
+// a compiled subcase path selection plan - each entry is the chain of per-level name
+// patterns from a top-level subcase down to the targeted leaf ("parent/child")
+using SubcasePathPlan = std::vector<std::vector<String>>;
+
+// compiles path filters into a selection plan - pure string processing, so compiling
+// the plan never executes any test body
+SubcasePathPlan compileSubcasePathPlan(const std::vector<String> &pathFilters);
+
+// checks whether the chain of subcase names (root first, leaf last) is selected by the
+// plan - a chain is selected when some plan path matches it level-by-level, i.e. the
+// chain is either a prefix of the plan path (an ancestor on the way to the target) or
+// the plan path is a prefix of the chain (inside the targeted leaf's subtree)
+bool subcasePathSelected(const std::vector<String> &chain, const SubcasePathPlan &plan, bool caseSensitive);
+
+} // namespace detail
+} // namespace doctest
+
+#endif // DOCTEST_CONFIG_DISABLE
+
+DOCTEST_SUPPRESS_PRIVATE_WARNINGS_POP
+
+#endif // DOCTEST_PARTS_PRIVATE_FILTERS
 
 DOCTEST_SUPPRESS_PRIVATE_WARNINGS_PUSH
 
@@ -4268,7 +4314,11 @@ struct ContextState : ContextOptions, TestRunStats, CurrentTestCaseStats {
     MultiLaneAtomic<int> numAssertsCurrentTest_atomic;
     MultiLaneAtomic<int> numAssertsFailedCurrentTest_atomic;
 
-    std::vector<std::vector<String>> filters = decltype(filters)(9); // 9 different filters
+    std::vector<std::vector<String>> filters = decltype(filters)(10); // 10 different filters
+
+    // selection plan compiled from the subcase path filters (filters[9]) - compiled
+    // when the options are parsed, before any test body runs
+    SubcasePathPlan subcase_path_plan;
 
     std::vector<IReporter *> reporters_currently_used;
 
@@ -5035,32 +5085,6 @@ std::set<TestCase> &getRegisteredTests();
 DOCTEST_SUPPRESS_PRIVATE_WARNINGS_POP
 
 #endif // DOCTEST_PARTS_PRIVATE_TEST_CASE
-#ifndef DOCTEST_PARTS_PRIVATE_FILTERS
-#define DOCTEST_PARTS_PRIVATE_FILTERS
-
-
-DOCTEST_SUPPRESS_PRIVATE_WARNINGS_PUSH
-
-#ifndef DOCTEST_CONFIG_DISABLE
-
-namespace doctest {
-namespace detail {
-
-// matching of a string against a wildcard mask (case sensitivity configurable) taken from
-// https://www.codeproject.com/Articles/1088/Wildcard-string-compare-globbing
-int wildcmp(const char *str, const char *wild, bool caseSensitive);
-
-// checks if the name matches any of the filters (and can be configured what to do when empty)
-bool matchesAny(const char *name, const std::vector<String> &filters, bool matchEmpty, bool caseSensitive);
-
-} // namespace detail
-} // namespace doctest
-
-#endif // DOCTEST_CONFIG_DISABLE
-
-DOCTEST_SUPPRESS_PRIVATE_WARNINGS_POP
-
-#endif // DOCTEST_PARTS_PRIVATE_FILTERS
 #ifndef DOCTEST_PARTS_PRIVATE_SIGNALS
 #define DOCTEST_PARTS_PRIVATE_SIGNALS
 
@@ -5679,6 +5703,8 @@ void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sc=",                 p->filters[6]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-exclude=",    p->filters[7]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7]);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-path=",       p->filters[9]);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "scp=",                p->filters[9]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8]);
     // clang-format on
@@ -5782,6 +5808,10 @@ void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
         p->list_reporters = true;
         p->exit = true;
     }
+
+    // compile the subcase path selection plan from the parsed filters - this is pure
+    // string processing and happens before (and independently of) any test body run
+    p->subcase_path_plan = compileSubcasePathPlan(p->filters[9]);
 }
 
 // allows the user to add procedurally to the filters from the command line
@@ -5793,6 +5823,7 @@ void Context::addFilter(const char *filter, const char *value) {
 void Context::clearFilters() {
     for (auto &curr: p->filters)
         curr.clear();
+    p->subcase_path_plan.clear();
 }
 
 // allows the user to override procedurally the bool options from the command line
@@ -6488,6 +6519,42 @@ bool matchesAny(const char *name, const std::vector<String> &filters, bool match
     return false;
 }
 
+SubcasePathPlan compileSubcasePathPlan(const std::vector<String> &pathFilters) {
+    SubcasePathPlan plan;
+    for (const auto &filter: pathFilters) {
+        const char *curr = filter.c_str();
+        if (*curr == '\0')
+            continue;
+        std::vector<String> path;
+        const char *begin = curr;
+        for (;; ++curr) {
+            if (*curr == '/' || *curr == '\0') {
+                path.emplace_back(begin, static_cast<String::size_type>(curr - begin));
+                if (*curr == '\0')
+                    break;
+                begin = curr + 1;
+            }
+        }
+        plan.push_back(path);
+    }
+    return plan;
+}
+
+bool subcasePathSelected(const std::vector<String> &chain, const SubcasePathPlan &plan, bool caseSensitive) {
+    if (plan.empty())
+        return true;
+    for (const auto &path: plan) {
+        const size_t shared = chain.size() < path.size() ? chain.size() : path.size();
+        size_t level = 0;
+        for (; level < shared; ++level)
+            if (!wildcmp(chain[level].c_str(), path[level].c_str(), caseSensitive))
+                break;
+        if (level == shared)
+            return true;
+    }
+    return false;
+}
+
 } // namespace detail
 } // namespace doctest
 
@@ -7000,6 +7067,9 @@ void ConsoleReporter::printHelp() {
       << Whitespace(sizePrefixDisplay * 1) << "filters     subcases by their name\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "sce, --" DOCTEST_OPTIONS_PREFIX_DISPLAY "subcase-exclude=<filters>     "
       << Whitespace(sizePrefixDisplay * 1) << "filters OUT subcases by their name\n";
+    s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "scp, --" DOCTEST_OPTIONS_PREFIX_DISPLAY "subcase-path=<filters>        "
+      << Whitespace(sizePrefixDisplay * 1) << "filters     subcases by their parent chain\n";
+    s << Whitespace(sizePrefixDisplay * 3) << "                                       (\"parent/child\" - per-level wildcards)\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "r,   --" DOCTEST_OPTIONS_PREFIX_DISPLAY "reporters=<filters>           "
       << Whitespace(sizePrefixDisplay * 1) << "reporters to use (console is default)\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "o,   --" DOCTEST_OPTIONS_PREFIX_DISPLAY "out=<string>                  "
@@ -8474,6 +8544,16 @@ bool Subcase::checkFilters() {
         if (matchesAny(m_signature.m_name.c_str(), g_cs->filters[7], false, g_cs->case_sensitive))
             return true;
     }
+    if (!g_cs->subcase_path_plan.empty()) {
+        // select by the full parent chain so that nested subcases with the same leaf
+        // name under different parents are not mixed up by their last name alone
+        std::vector<String> chain;
+        for (const auto &active: g_cs->traversal.activeSubcases())
+            chain.push_back(active.m_name);
+        chain.push_back(m_signature.m_name);
+        if (!subcasePathSelected(chain, g_cs->subcase_path_plan, g_cs->case_sensitive))
+            return true;
+    }
     return false;
 }
 
@@ -8735,6 +8815,7 @@ void TraversalState::resetForTestCase() {
     m_decisionPath.clear();
     m_discoveredDecisionPath.clear();
     m_enteredSubcaseDepths.clear();
+    m_activeSubcases.clear();
     m_activeSubcaseDepth = 0;
     m_decisionDepth = 0;
 }
@@ -8744,6 +8825,7 @@ void TraversalState::resetForRun() {
     m_discoveredDecisionPath.clear();
     m_decisionDepth = 0;
     m_enteredSubcaseDepths.clear();
+    m_activeSubcases.clear();
 }
 
 bool TraversalState::advance() {
@@ -8779,6 +8861,7 @@ bool TraversalState::tryEnterSubcase(const SubcaseSignature &signature) {
         return false;
 
     m_enteredSubcaseDepths.push_back(m_decisionDepth);
+    m_activeSubcases.push_back(signature);
     m_activeSubcaseDepth++;
     m_decisionDepth++;
     return true;
@@ -8787,6 +8870,7 @@ bool TraversalState::tryEnterSubcase(const SubcaseSignature &signature) {
 void TraversalState::leaveSubcase() {
     m_decisionDepth = m_enteredSubcaseDepths.back();
     m_enteredSubcaseDepths.pop_back();
+    m_activeSubcases.pop_back();
     m_activeSubcaseDepth--;
 }
 
