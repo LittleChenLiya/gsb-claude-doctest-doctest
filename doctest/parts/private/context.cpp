@@ -430,6 +430,7 @@ int Context::run() {
 
     // save the old context state in case such was setup - for using asserts out of a testing context
     auto old_cs = g_cs;
+    const bool old_is_running_in_test = is_running_in_test;
     // this is the current contest
     g_cs = p;
     is_running_in_test = true;
@@ -465,20 +466,51 @@ int Context::run() {
 
     FatalConditionHandler::allocateAltStackMem();
 
+    // guarantees that every reporter which finished initialization is closed exactly once -
+    // on normal completion, on fail-fast early exits and when an exception escapes the run.
+    // Reporters whose constructor threw never made it into the list and are not closed, and
+    // an exception from a close callback is swallowed so it cannot mask the original failure.
+    struct ReporterCloseGuard {
+        ContextState *s;
+        ContextState *previous;
+        bool was_running;
+        bool closed;
+        ReporterCloseGuard(ContextState *s_, ContextState *previous_, bool was_running_)
+            : s(s_)
+            , previous(previous_)
+            , was_running(was_running_)
+            , closed(false) {}
+        ~ReporterCloseGuard() { close(); }
+        void close() noexcept {
+            if (closed)
+                return;
+            closed = true;
+
+            FatalConditionHandler::freeAltStackMem();
+
+            // restore context
+            g_cs = previous;
+            is_running_in_test = was_running;
+
+            // we have to free the reporters which were allocated when the run started
+            for (auto &curr: s->reporters_currently_used) {
+#ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+                try {
+#endif // DOCTEST_CONFIG_NO_EXCEPTIONS
+                    delete curr;
+#ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+                } catch (...) {} // a throwing close must not mask the original failure
+#endif // DOCTEST_CONFIG_NO_EXCEPTIONS
+            }
+            s->reporters_currently_used.clear();
+        }
+    } reporter_close_guard{p, old_cs, old_is_running_in_test};
+
     auto cleanup_and_return = [&]() {
-        FatalConditionHandler::freeAltStackMem();
+        reporter_close_guard.close();
 
         if (fstr.is_open())
             fstr.close();
-
-        // restore context
-        g_cs = old_cs;
-        is_running_in_test = false;
-
-        // we have to free the reporters which were allocated when the run started
-        for (auto &curr: p->reporters_currently_used)
-            delete curr;
-        p->reporters_currently_used.clear();
 
         if (p->numTestCasesFailed && !p->no_exitcode)
             return EXIT_FAILURE;
