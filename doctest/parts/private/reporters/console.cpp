@@ -192,6 +192,8 @@ void ConsoleReporter::printHelp() {
       << Whitespace(sizePrefixDisplay * 1) << "include successful assertions in output\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "cs,  --" DOCTEST_OPTIONS_PREFIX_DISPLAY "case-sensitive=<bool>         "
       << Whitespace(sizePrefixDisplay * 1) << "filters being treated as case sensitive\n";
+    s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "qf,  --" DOCTEST_OPTIONS_PREFIX_DISPLAY "quoted-filters=<bool>         "
+      << Whitespace(sizePrefixDisplay * 1) << "allow \"...\" grouping in filters so commas can be part of names\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "e,   --" DOCTEST_OPTIONS_PREFIX_DISPLAY "exit=<bool>                   "
       << Whitespace(sizePrefixDisplay * 1) << "exits after the tests finish\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "d,   --" DOCTEST_OPTIONS_PREFIX_DISPLAY "duration=<bool>               "

@@ -43,6 +43,7 @@ All the options can also be set with code (defaults/overrides) if the user [**su
 | **Bool Options** | <hr> |
 | ```-s``` &nbsp;&nbsp;&nbsp; ```--success=<bool>``` | To include successful assertions in the output |
 | ```-cs``` &nbsp; ```--case-sensitive=<bool>``` | Filters being treated as case sensitive |
+| ```-qf``` &nbsp; ```--quoted-filters=<bool>``` | Enables double-quote grouping in all ```<filters>``` options so that commas (and quotes, escaped as ```\"```) can be part of a single filter - e.g. ```--test-case="alpha,beta"``` matches a test case literally named ```alpha,beta```. An unterminated quote aborts the run with an error before any test case is executed. When disabled (the default) filters are lexed exactly as before |
 | ```-e``` &nbsp;&nbsp;&nbsp; ```--exit=<bool>``` | Exits after the tests finish - this is meaningful only when the client has [**provided the ```main()``` entry point**](main.md)  - the program should check the ```shouldExit()``` method after calling ```run()``` on a ```doctest::Context``` object and should exit - this is left up to the user. The idea is to be able to execute just the tests in a client program and to not continue with its execution |
 | ```-d``` &nbsp; ```--duration=<bool>``` | Prints the time each test case took in seconds |
 | ```-m``` &nbsp; ```--minimal=<bool>``` | Only prints failing tests |

@@ -127,10 +127,16 @@ bool parseFlag(int argc, const char *const *argv, const char *pattern) {
 }
 
 // parses a comma separated list of words after a pattern in one of the arguments in argv
-bool parseCommaSepArgs(int argc, const char *const *argv, const char *pattern, std::vector<String> &res) {
+bool parseCommaSepArgs(
+    int argc, const char *const *argv, const char *pattern, std::vector<String> &res,
+    bool quoted = false, String *err = nullptr
+) {
     String filtersString;
     if (parseOption(argc, argv, pattern, &filtersString)) {
-        // tokenize with "," as a separator, unless escaped with backslash
+        // tokenize with "," as a separator, unless escaped with backslash; when 'quoted'
+        // is enabled, double quotes group text (so that commas may be part of a single
+        // filter) and '\"' yields a literal quote - every escape is resolved through one
+        // and the same code path below
         std::ostringstream s;
         auto flush = [&s, &res]() {
             auto string = s.str();
@@ -141,13 +147,14 @@ bool parseCommaSepArgs(int argc, const char *const *argv, const char *pattern, s
         };
 
         bool seenBackslash = false;
+        bool inQuotes      = false;
         const char *current = filtersString.c_str();
         const char *end = current + strlen(current);
         while (current != end) {
             const char character = *current++;
             if (seenBackslash) {
                 seenBackslash = false;
-                if (character == ',' || character == '\\') {
+                if (character == ',' || character == '\\' || (quoted && character == '"')) {
                     s.put(character);
                     continue;
                 }
@@ -155,7 +162,9 @@ bool parseCommaSepArgs(int argc, const char *const *argv, const char *pattern, s
             }
             if (character == '\\') {
                 seenBackslash = true;
-            } else if (character == ',') {
+            } else if (quoted && character == '"') {
+                inQuotes = !inQuotes;
+            } else if (character == ',' && !inQuotes) {
                 flush();
             } else {
                 s.put(character);
@@ -164,6 +173,13 @@ bool parseCommaSepArgs(int argc, const char *const *argv, const char *pattern, s
 
         if (seenBackslash) {
             s.put('\\');
+        }
+        if (inQuotes) {
+            // an unterminated quote is a hard error - reported before any test case runs
+            if (err && err->size() == 0) {
+                *err = String("unterminated quote in filter expression for option '--") + pattern + "'";
+            }
+            return true;
         }
         flush();
         return true;
@@ -234,27 +250,6 @@ void Context::applyCommandLine(int argc, const char *const *argv) {
 void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
     using namespace detail;
 
-    // clang-format off
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file=",        p->filters[0]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sf=",                 p->filters[0]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file-exclude=",p->filters[1]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sfe=",                p->filters[1]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite=",         p->filters[2]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "ts=",                 p->filters[2]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite-exclude=", p->filters[3]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tse=",                p->filters[3]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case=",          p->filters[4]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tc=",                 p->filters[4]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case-exclude=",  p->filters[5]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tce=",                p->filters[5]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase=",            p->filters[6]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sc=",                 p->filters[6]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-exclude=",    p->filters[7]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8]);
-    // clang-format on
-
     int intRes = 0;
     String strRes;
 
@@ -281,6 +276,33 @@ void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
     if (parseOption(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX name "=", &strRes, default) ||                           \
         parseOption(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX sname "=", &strRes, default) || withDefaults)            \
     p->var = strRes
+
+    // this option affects how the filters below are lexed, so it has to be parsed first
+    DOCTEST_PARSE_AS_BOOL_OR_FLAG("quoted-filters", "qf", quoted_filters, false);
+
+    // stale lexing errors from a previous parse don't apply to this one
+    p->filter_error = String();
+
+    // clang-format off
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file=",        p->filters[0], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sf=",                 p->filters[0], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file-exclude=",p->filters[1], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sfe=",                p->filters[1], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite=",         p->filters[2], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "ts=",                 p->filters[2], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite-exclude=", p->filters[3], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tse=",                p->filters[3], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case=",          p->filters[4], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tc=",                 p->filters[4], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case-exclude=",  p->filters[5], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tce=",                p->filters[5], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase=",            p->filters[6], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sc=",                 p->filters[6], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-exclude=",    p->filters[7], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8], p->quoted_filters, &p->filter_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8], p->quoted_filters, &p->filter_error);
+    // clang-format on
 
     DOCTEST_PARSE_STR_OPTION("out", "o", out, "");
     DOCTEST_PARSE_STR_OPTION("order-by", "ob", order_by, "file");
@@ -436,6 +458,15 @@ int Context::run() {
 
     g_no_colors = p->no_colors;
     p->resetRunData();
+
+    // a malformed filter expression (e.g. an unterminated quote while quoted filters
+    // are enabled) aborts the run before any test case is executed
+    if (p->filter_error.size() != 0) {
+        std::cerr << Color::Cyan << "[doctest] " << Color::None << p->filter_error.c_str() << std::endl;
+        g_cs              = old_cs;
+        is_running_in_test = false;
+        return EXIT_FAILURE;
+    }
 
     std::fstream fstr;
     if (p->cout == nullptr) {

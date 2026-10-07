@@ -29,6 +29,7 @@ struct ContextOptions {
 
     bool success;               // include successful assertions in output
     bool case_sensitive;        // if filtering should be case sensitive
+    bool quoted_filters;        // allow "..." grouping in filters so commas/quotes can be part of names
     bool exit;                  // if the program should be exited after the tests are ran/whatever
     bool duration;              // print the time duration of each test case
     bool minimal;               // minimal console output (only test failures)
