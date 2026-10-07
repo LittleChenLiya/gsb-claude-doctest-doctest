@@ -100,6 +100,7 @@ doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_filters.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_path.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_platform.cpp DEFINES CMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}")
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_string.cpp)
+doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_subcase_plan.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_traversal.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_xml.cpp)
 
@@ -129,4 +130,33 @@ set_tests_properties(
     PROPERTIES
         PASS_REGULAR_EXPRESSION
             ".*ERROR: test case THREW exception: #782 repro exception.*|Exceptions disabled, cannot run this test"
+)
+
+# Targeted checks for the --subcase-path entry point against the "subcase path fixture"
+# in doctest/test_subcase_plan.cpp (two parents, each with a same-named child).
+add_test(
+    NAME "doctest/test_subcase_plan.cpp/fixture-unfiltered"
+    COMMAND doctest_test_subcase_plan_cpp "-tc=subcase path fixture"
+)
+set_tests_properties(
+    "doctest/test_subcase_plan.cpp/fixture-unfiltered"
+    PROPERTIES PASS_REGULAR_EXPRESSION "assertions: +3 "
+)
+
+add_test(
+    NAME "doctest/test_subcase_plan.cpp/fixture-subcase-path"
+    COMMAND doctest_test_subcase_plan_cpp "-tc=subcase path fixture" "--subcase-path=parent/child"
+)
+set_tests_properties(
+    "doctest/test_subcase_plan.cpp/fixture-subcase-path"
+    PROPERTIES PASS_REGULAR_EXPRESSION "assertions: +1 "
+)
+
+add_test(
+    NAME "doctest/test_subcase_plan.cpp/fixture-name-filter-mixes"
+    COMMAND doctest_test_subcase_plan_cpp "-tc=subcase path fixture" "--subcase=child"
+)
+set_tests_properties(
+    "doctest/test_subcase_plan.cpp/fixture-name-filter-mixes"
+    PROPERTIES PASS_REGULAR_EXPRESSION "assertions: +2 "
 )

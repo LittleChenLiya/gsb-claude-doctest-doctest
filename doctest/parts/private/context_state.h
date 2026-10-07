@@ -5,6 +5,7 @@
 #include "doctest/parts/private/timer.h"
 #include "doctest/parts/private/atomic.h"
 #include "doctest/parts/private/traversal.h"
+#include "doctest/parts/private/subcase_plan.h"
 
 DOCTEST_SUPPRESS_PRIVATE_WARNINGS_PUSH
 
@@ -18,7 +19,11 @@ struct ContextState : ContextOptions, TestRunStats, CurrentTestCaseStats {
     MultiLaneAtomic<int> numAssertsCurrentTest_atomic;
     MultiLaneAtomic<int> numAssertsFailedCurrentTest_atomic;
 
-    std::vector<std::vector<String>> filters = decltype(filters)(9); // 9 different filters
+    std::vector<std::vector<String>> filters = decltype(filters)(10); // 10 different filters
+
+    // compiled from filters[9] - selects subcases by their whole parent chain instead
+    // of only their own name (compiling it never executes any test body)
+    SubcasePathPlan subcase_path_plan;
 
     std::vector<IReporter *> reporters_currently_used;
 

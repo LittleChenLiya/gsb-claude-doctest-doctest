@@ -167,6 +167,8 @@ void ConsoleReporter::printHelp() {
       << Whitespace(sizePrefixDisplay * 1) << "filters     subcases by their name\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "sce, --" DOCTEST_OPTIONS_PREFIX_DISPLAY "subcase-exclude=<filters>     "
       << Whitespace(sizePrefixDisplay * 1) << "filters OUT subcases by their name\n";
+    s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "scp, --" DOCTEST_OPTIONS_PREFIX_DISPLAY "subcase-path=<filters>        "
+      << Whitespace(sizePrefixDisplay * 1) << "filters     subcases by parent chain (a/b/c)\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "r,   --" DOCTEST_OPTIONS_PREFIX_DISPLAY "reporters=<filters>           "
       << Whitespace(sizePrefixDisplay * 1) << "reporters to use (console is default)\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "o,   --" DOCTEST_OPTIONS_PREFIX_DISPLAY "out=<string>                  "

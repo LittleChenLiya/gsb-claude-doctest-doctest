@@ -24,6 +24,12 @@ public:
         return m_activeSubcaseDepth;
     }
 
+    // Names of the currently entered subcases from the root downwards - the chain that
+    // path-based subcase selection (SubcasePathPlan) is matched against.
+    const std::vector<String> &activeSubcaseNames() const {
+        return m_activeSubcaseNames;
+    }
+
     void resetForTestCase();
     void resetForRun();
     bool advance();
@@ -39,6 +45,7 @@ private:
     std::vector<size_t> m_decisionPath;
     size_t m_decisionDepth = 0;
     std::vector<size_t> m_enteredSubcaseDepths;
+    std::vector<String> m_activeSubcaseNames;
     size_t m_activeSubcaseDepth = 0;
 
     DecisionPoint &ensureDecisionPointAtCurrentDepth();

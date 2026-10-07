@@ -251,6 +251,8 @@ void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sc=",                 p->filters[6]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-exclude=",    p->filters[7]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7]);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-path=",       p->filters[9]);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "scp=",                p->filters[9]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8]);
     parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8]);
     // clang-format on
@@ -354,6 +356,10 @@ void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
         p->list_reporters = true;
         p->exit = true;
     }
+
+    // compile the subcase path selection plan from the raw filters - a pure string
+    // operation which never executes any test body
+    p->subcase_path_plan.compile(p->filters[9], p->case_sensitive);
 }
 
 // allows the user to add procedurally to the filters from the command line
@@ -365,6 +371,7 @@ void Context::addFilter(const char *filter, const char *value) {
 void Context::clearFilters() {
     for (auto &curr: p->filters)
         curr.clear();
+    p->subcase_path_plan.compile(p->filters[9], p->case_sensitive);
 }
 
 // allows the user to override procedurally the bool options from the command line

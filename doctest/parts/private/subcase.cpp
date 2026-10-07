@@ -29,6 +29,11 @@ bool Subcase::checkFilters() {
         if (matchesAny(m_signature.m_name.c_str(), g_cs->filters[7], false, g_cs->case_sensitive))
             return true;
     }
+    // path-based selection: the candidate's own name is not enough - the whole chain of
+    // ancestor subcase names has to be consistent with at least one selected path, so
+    // same-named subcases under different parents no longer get mixed up
+    if (!g_cs->subcase_path_plan.allows(g_cs->traversal.activeSubcaseNames(), m_signature.m_name))
+        return true;
     return false;
 }
 
