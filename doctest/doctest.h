@@ -1505,6 +1505,7 @@ struct ContextOptions {
     bool no_debug_output;       // no output in the debug console when a debugger is attached
     bool no_skipped_summary;    // don't print "skipped" in the summary !!! UNDOCUMENTED !!!
     bool no_time_in_output;     // omit any time/timestamps from output !!! UNDOCUMENTED !!!
+    bool quoted_filters;        // allow "..." quoting in filters so commas/quotes can be part of a single filter
 
     bool help;             // to print the help
     bool version;          // to print the version
@@ -4270,6 +4271,8 @@ struct ContextState : ContextOptions, TestRunStats, CurrentTestCaseStats {
 
     std::vector<std::vector<String>> filters = decltype(filters)(9); // 9 different filters
 
+    bool filter_parse_error = false; // a filter string was malformed (e.g. unterminated quote)
+
     std::vector<IReporter *> reporters_currently_used;
 
     assert_handler ah = nullptr;
@@ -5053,6 +5056,12 @@ int wildcmp(const char *str, const char *wild, bool caseSensitive);
 // checks if the name matches any of the filters (and can be configured what to do when empty)
 bool matchesAny(const char *name, const std::vector<String> &filters, bool matchEmpty, bool caseSensitive);
 
+// tokenizes a comma separated filter string into individual filters - when 'quotedFilters' is
+// enabled, sections in double quotes are grouped into a single filter (so that commas can be
+// part of a filter) and '\"' produces a literal quote through the same single escape path as
+// the other backslash escapes - returns false when a quoted section is left unterminated
+bool tokenizeFilters(const char *filtersString, std::vector<String> &res, bool quotedFilters);
+
 } // namespace detail
 } // namespace doctest
 
@@ -5555,45 +5564,14 @@ bool parseFlag(int argc, const char *const *argv, const char *pattern) {
 }
 
 // parses a comma separated list of words after a pattern in one of the arguments in argv
-bool parseCommaSepArgs(int argc, const char *const *argv, const char *pattern, std::vector<String> &res) {
+bool parseCommaSepArgs(
+    int argc, const char *const *argv, const char *pattern, std::vector<String> &res, bool quotedFilters,
+    bool &parseError
+) {
     String filtersString;
     if (parseOption(argc, argv, pattern, &filtersString)) {
-        // tokenize with "," as a separator, unless escaped with backslash
-        std::ostringstream s;
-        auto flush = [&s, &res]() {
-            auto string = s.str();
-            if (!string.empty()) {
-                res.emplace_back(string.c_str());
-            }
-            s.str("");
-        };
-
-        bool seenBackslash = false;
-        const char *current = filtersString.c_str();
-        const char *end = current + strlen(current);
-        while (current != end) {
-            const char character = *current++;
-            if (seenBackslash) {
-                seenBackslash = false;
-                if (character == ',' || character == '\\') {
-                    s.put(character);
-                    continue;
-                }
-                s.put('\\');
-            }
-            if (character == '\\') {
-                seenBackslash = true;
-            } else if (character == ',') {
-                flush();
-            } else {
-                s.put(character);
-            }
-        }
-
-        if (seenBackslash) {
-            s.put('\\');
-        }
-        flush();
+        if (!tokenizeFilters(filtersString.c_str(), res, quotedFilters))
+            parseError = true; // unterminated quote - reported before any test case is run
         return true;
     }
     return false;
@@ -5662,27 +5640,6 @@ void Context::applyCommandLine(int argc, const char *const *argv) {
 void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
     using namespace detail;
 
-    // clang-format off
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file=",        p->filters[0]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sf=",                 p->filters[0]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file-exclude=",p->filters[1]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sfe=",                p->filters[1]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite=",         p->filters[2]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "ts=",                 p->filters[2]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite-exclude=", p->filters[3]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tse=",                p->filters[3]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case=",          p->filters[4]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tc=",                 p->filters[4]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case-exclude=",  p->filters[5]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tce=",                p->filters[5]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase=",            p->filters[6]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sc=",                 p->filters[6]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-exclude=",    p->filters[7]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8]);
-    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8]);
-    // clang-format on
-
     int intRes = 0;
     String strRes;
 
@@ -5709,6 +5666,30 @@ void Context::parseArgs(int argc, const char *const *argv, bool withDefaults) {
     if (parseOption(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX name "=", &strRes, default) ||                           \
         parseOption(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX sname "=", &strRes, default) || withDefaults)            \
     p->var = strRes
+
+    // parsed before the filters since it affects how the filter strings are tokenized
+    DOCTEST_PARSE_AS_BOOL_OR_FLAG("quoted-filters", "qf", quoted_filters, false);
+
+    // clang-format off
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file=",        p->filters[0], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sf=",                 p->filters[0], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "source-file-exclude=",p->filters[1], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sfe=",                p->filters[1], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite=",         p->filters[2], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "ts=",                 p->filters[2], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-suite-exclude=", p->filters[3], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tse=",                p->filters[3], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case=",          p->filters[4], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tc=",                 p->filters[4], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "test-case-exclude=",  p->filters[5], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "tce=",                p->filters[5], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase=",            p->filters[6], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sc=",                 p->filters[6], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "subcase-exclude=",    p->filters[7], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "sce=",                p->filters[7], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "reporters=",          p->filters[8], p->quoted_filters, p->filter_parse_error);
+    parseCommaSepArgs(argc, argv, DOCTEST_CONFIG_OPTIONS_PREFIX "r=",                  p->filters[8], p->quoted_filters, p->filter_parse_error);
+    // clang-format on
 
     DOCTEST_PARSE_STR_OPTION("out", "o", out, "");
     DOCTEST_PARSE_STR_OPTION("order-by", "ob", order_by, "file");
@@ -5793,6 +5774,7 @@ void Context::addFilter(const char *filter, const char *value) {
 void Context::clearFilters() {
     for (auto &curr: p->filters)
         curr.clear();
+    p->filter_parse_error = false;
 }
 
 // allows the user to override procedurally the bool options from the command line
@@ -5908,7 +5890,7 @@ int Context::run() {
             delete curr;
         p->reporters_currently_used.clear();
 
-        if (p->numTestCasesFailed && !p->no_exitcode)
+        if ((p->numTestCasesFailed || p->filter_parse_error) && !p->no_exitcode)
             return EXIT_FAILURE;
         return EXIT_SUCCESS;
     };
@@ -5938,6 +5920,14 @@ int Context::run() {
     if (p->no_run || p->version || p->help || p->list_reporters) {
         DOCTEST_ITERATE_THROUGH_REPORTERS(report_query, QueryData());
 
+        return cleanup_and_return();
+    }
+
+    // a malformed filter expression (e.g. an unterminated quote) is a hard error - report it
+    // and bail out before any test case is executed
+    if (p->filter_parse_error) {
+        *p->cout << Color::Cyan << "[doctest] " << Color::None
+                 << "aborting: unterminated quote in a filter expression\n";
         return cleanup_and_return();
     }
 
@@ -6486,6 +6476,55 @@ bool matchesAny(const char *name, const std::vector<String> &filters, bool match
         if (wildcmp(name, curr.c_str(), caseSensitive))
             return true;
     return false;
+}
+
+bool tokenizeFilters(const char *filtersString, std::vector<String> &res, bool quotedFilters) {
+    // tokenize with "," as a separator, unless escaped with backslash or inside a quoted section
+    std::ostringstream s;
+    auto flush = [&s, &res]() {
+        auto string = s.str();
+        if (!string.empty()) {
+            res.emplace_back(string.c_str());
+        }
+        s.str("");
+    };
+
+    bool seenBackslash = false;
+    bool inQuotes = false;
+    const char *current = filtersString;
+    const char *end = current + strlen(current);
+    while (current != end) {
+        const char character = *current++;
+        if (seenBackslash) {
+            // a single escape path: a backslash always quotes the very next character - inside
+            // quoted sections this is how literal quotes/backslashes are produced, and outside
+            // of them the legacy escapes ("\," and "\\") keep working exactly as before
+            seenBackslash = false;
+            if (inQuotes || character == ',' || character == '\\' ||
+                (quotedFilters && character == '"')) {
+                s.put(character);
+            } else {
+                s.put('\\');
+                s.put(character);
+            }
+            continue;
+        }
+        if (character == '\\') {
+            seenBackslash = true;
+        } else if (quotedFilters && character == '"') {
+            inQuotes = !inQuotes;
+        } else if (character == ',' && !inQuotes) {
+            flush();
+        } else {
+            s.put(character);
+        }
+    }
+
+    if (seenBackslash) {
+        s.put('\\');
+    }
+    flush();
+    return !inQuotes; // an unterminated quoted section is a malformed filter expression
 }
 
 } // namespace detail
@@ -7059,6 +7098,8 @@ void ConsoleReporter::printHelp() {
       << Whitespace(sizePrefixDisplay * 1) << "whenever file paths start with this prefix, remove it from the output\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "nln, --" DOCTEST_OPTIONS_PREFIX_DISPLAY "no-line-numbers=<bool>        "
       << Whitespace(sizePrefixDisplay * 1) << "0 instead of real line numbers in output\n";
+    s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "qf,  --" DOCTEST_OPTIONS_PREFIX_DISPLAY "quoted-filters=<bool>         "
+      << Whitespace(sizePrefixDisplay * 1) << "allow \"...\" quoting in filters so commas can be part of a filter\n";
     // ================================================================================== << 79
     // clang-format on
 

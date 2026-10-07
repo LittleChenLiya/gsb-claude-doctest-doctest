@@ -4,6 +4,7 @@
 
 using doctest::String;
 using doctest::detail::matchesAny;
+using doctest::detail::tokenizeFilters;
 using doctest::detail::wildcmp;
 
 TEST_SUITE("Comparing a single string to a glob") {
@@ -155,5 +156,85 @@ TEST_SUITE("Comparing a single string to multiple globs") {
         CHECK(matches("bar") == true);
         CHECK(matches("baz") == true);
         CHECK(matches("quux") == false);
+    }
+}
+
+TEST_SUITE("Tokenizing filter strings") {
+
+    static std::vector<String> tokenize(const char *str, bool quotedFilters, bool &ok) {
+        std::vector<String> res;
+        ok = tokenizeFilters(str, res, quotedFilters);
+        return res;
+    }
+
+    TEST_CASE("Legacy unquoted tokenization is unchanged") {
+        bool ok = false;
+
+        CHECK(tokenize("", false, ok) == std::vector<String>{});
+        CHECK(ok);
+
+        CHECK(tokenize("foo,bar,,baz", false, ok) == std::vector<String>{"foo", "bar", "baz"});
+        CHECK(ok);
+
+        SUBCASE("Escaped commas and backslashes") {
+            CHECK(tokenize(R"(this\,test\\)", false, ok) == std::vector<String>{"this,test\\"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Backslash before other characters is kept as is") {
+            CHECK(tokenize(R"(Test that \ works)", false, ok) == std::vector<String>{"Test that \\ works"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Trailing backslash is kept as is") {
+            CHECK(tokenize("foo\\", false, ok) == std::vector<String>{"foo\\"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Quotes have no special meaning without the option") {
+            CHECK(tokenize(R"("foo,bar")", false, ok) == std::vector<String>{R"("foo)", R"(bar")"});
+            CHECK(ok);
+        }
+    }
+
+    TEST_CASE("Quoted tokenization") {
+        bool ok = false;
+
+        SUBCASE("Commas inside quotes are part of the filter") {
+            CHECK(tokenize(R"("foo,bar",baz)", true, ok) == std::vector<String>{"foo,bar", "baz"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Quoted sections compose with unquoted parts") {
+            CHECK(tokenize(R"(pre"fix,ed"post)", true, ok) == std::vector<String>{"prefix,edpost"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Escaped quotes take the single escape path") {
+            CHECK(tokenize(R"("say \"hi\", ok")", true, ok) == std::vector<String>{R"(say "hi", ok)"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Escaped backslash inside quotes") {
+            CHECK(tokenize(R"("a\\b")", true, ok) == std::vector<String>{"a\\b"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Escaped quote outside quotes is a literal quote") {
+            CHECK(tokenize(R"(a\"b,c)", true, ok) == std::vector<String>{R"(a"b)", "c"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Unquoted expressions behave like the legacy ones") {
+            CHECK(tokenize("foo,bar", true, ok) == std::vector<String>{"foo", "bar"});
+            CHECK(ok);
+            CHECK(tokenize(R"(this\,that)", true, ok) == std::vector<String>{"this,that"});
+            CHECK(ok);
+        }
+
+        SUBCASE("Unterminated quote is reported as an error") {
+            CHECK(tokenize(R"("foo,bar)", true, ok) == std::vector<String>{"foo,bar"});
+            CHECK(!ok);
+        }
     }
 }

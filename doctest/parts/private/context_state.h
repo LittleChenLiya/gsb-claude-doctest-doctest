@@ -20,6 +20,8 @@ struct ContextState : ContextOptions, TestRunStats, CurrentTestCaseStats {
 
     std::vector<std::vector<String>> filters = decltype(filters)(9); // 9 different filters
 
+    bool filter_parse_error = false; // a filter string was malformed (e.g. unterminated quote)
+
     std::vector<IReporter *> reporters_currently_used;
 
     assert_handler ah = nullptr;

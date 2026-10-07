@@ -49,6 +49,7 @@ struct ContextOptions {
     bool no_debug_output;       // no output in the debug console when a debugger is attached
     bool no_skipped_summary;    // don't print "skipped" in the summary !!! UNDOCUMENTED !!!
     bool no_time_in_output;     // omit any time/timestamps from output !!! UNDOCUMENTED !!!
+    bool quoted_filters;        // allow "..." quoting in filters so commas/quotes can be part of a single filter
 
     bool help;             // to print the help
     bool version;          // to print the version

@@ -11,6 +11,7 @@
 **Filters** - a comma-separated list of wildcards for matching values - where ```*``` means "match any sequence" and ```?``` means "match any one character".
 To pass patterns with intervals use ```""``` like this:  ```--test-case="*no sound*,vaguely named test number ?"```. Patterns that contain a comma or a backslash can be escaped with ```\``` (example: ```--test-case=this\,test\,has\,commas\,and\,a\\\,backslash\,followed\,by\,a\,comma```).
 If a backslash is followed by neither ```\``` nor ```,``` it's left as is, e.g. ```--test-case="Test that \ works correctly"```.
+With [**```--quoted-filters```**](commandline.md) sections of a filter can also be wrapped in double quotes so that commas become part of a single filter - for example ```--test-case="\"alpha, beta\",gamma"``` selects the tests ```alpha, beta``` and ```gamma```. Inside a quoted section a literal quote is produced with ```\"``` (the same backslash escape path as the other escapes). An unterminated quote is an error and aborts the run before any test case is executed.
 Be careful: your shell may use ```\``` for escaping as well, so `\` may actually get consumed by the shell instead of doctest.
 
 All the options can also be set with code (defaults/overrides) if the user [**supplies the ```main()``` function**](main.md).
@@ -60,6 +61,7 @@ All the options can also be set with code (defaults/overrides) if the user [**su
 | ```-npf``` ```--no-path-filenames=<bool>``` | Paths are removed from the output when a filename is printed - useful if you want the same output from the testing framework on different environments |
 | ```-sfp``` ```--strip-file-prefixes=<string>``` | Remove the longest matching one in [**a list of prefixes**](configuration.md#doctest_config_options_file_prefix_separator) from any file path in the output - similar to ```-npf```, but can preserve some context by not removing the entire relative paths. Try: ```--sfp=${CMAKE_SOURCE_DIR}/:${CMAKE_BINARY_DIR}/``` |
 | ```-nln``` ```--no-line-numbers=<bool>``` | Line numbers are replaced with ```0``` in the output when a source location is printed - useful if you want the same output from the testing framework even when test positions change within a source file |
+| ```-qf``` &nbsp; ```--quoted-filters=<bool>``` | Allows ```"..."``` quoting in filter expressions so that commas (and quotes - escaped as ```\"```) can be part of a single filter - an unterminated quote aborts the run before any test case is executed |
 | ```-ndo``` ```--no-debug-output=<bool>``` | Disables output in the debug console when a debugger is attached |
 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| |
 

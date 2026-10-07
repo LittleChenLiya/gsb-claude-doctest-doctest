@@ -226,6 +226,8 @@ void ConsoleReporter::printHelp() {
       << Whitespace(sizePrefixDisplay * 1) << "whenever file paths start with this prefix, remove it from the output\n";
     s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "nln, --" DOCTEST_OPTIONS_PREFIX_DISPLAY "no-line-numbers=<bool>        "
       << Whitespace(sizePrefixDisplay * 1) << "0 instead of real line numbers in output\n";
+    s << " -" DOCTEST_OPTIONS_PREFIX_DISPLAY "qf,  --" DOCTEST_OPTIONS_PREFIX_DISPLAY "quoted-filters=<bool>         "
+      << Whitespace(sizePrefixDisplay * 1) << "allow \"...\" quoting in filters so commas can be part of a filter\n";
     // ================================================================================== << 79
     // clang-format on
 

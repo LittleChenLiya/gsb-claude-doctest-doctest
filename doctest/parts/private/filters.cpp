@@ -49,6 +49,55 @@ bool matchesAny(const char *name, const std::vector<String> &filters, bool match
     return false;
 }
 
+bool tokenizeFilters(const char *filtersString, std::vector<String> &res, bool quotedFilters) {
+    // tokenize with "," as a separator, unless escaped with backslash or inside a quoted section
+    std::ostringstream s;
+    auto flush = [&s, &res]() {
+        auto string = s.str();
+        if (!string.empty()) {
+            res.emplace_back(string.c_str());
+        }
+        s.str("");
+    };
+
+    bool seenBackslash = false;
+    bool inQuotes = false;
+    const char *current = filtersString;
+    const char *end = current + strlen(current);
+    while (current != end) {
+        const char character = *current++;
+        if (seenBackslash) {
+            // a single escape path: a backslash always quotes the very next character - inside
+            // quoted sections this is how literal quotes/backslashes are produced, and outside
+            // of them the legacy escapes ("\," and "\\") keep working exactly as before
+            seenBackslash = false;
+            if (inQuotes || character == ',' || character == '\\' ||
+                (quotedFilters && character == '"')) {
+                s.put(character);
+            } else {
+                s.put('\\');
+                s.put(character);
+            }
+            continue;
+        }
+        if (character == '\\') {
+            seenBackslash = true;
+        } else if (quotedFilters && character == '"') {
+            inQuotes = !inQuotes;
+        } else if (character == ',' && !inQuotes) {
+            flush();
+        } else {
+            s.put(character);
+        }
+    }
+
+    if (seenBackslash) {
+        s.put('\\');
+    }
+    flush();
+    return !inQuotes; // an unterminated quoted section is a malformed filter expression
+}
+
 } // namespace detail
 } // namespace doctest
 
