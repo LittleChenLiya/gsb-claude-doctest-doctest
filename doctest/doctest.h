@@ -2809,6 +2809,12 @@ struct DOCTEST_INTERFACE IReporter {
     // (safe to cache a pointer to the input)
     virtual void test_case_skipped(const TestCaseData &) = 0;
 
+    // called exactly once when the run is over and the reporter is about to be destroyed -
+    // guaranteed for every reporter whose constructor has completed, even on early exits
+    // or when the run is aborted by an exception; exceptions thrown from here are
+    // swallowed so that they cannot mask a failure which is already in flight
+    virtual void reporter_close() {}
+
     DOCTEST_DECLARE_INTERFACE(IReporter)
 
     // can obtain all currently active contexts and stringify them if one wishes to do so
@@ -5896,6 +5902,20 @@ int Context::run() {
     auto cleanup_and_return = [&]() {
         FatalConditionHandler::freeAltStackMem();
 
+        // every reporter whose constructor has completed gets closed exactly once - a
+        // throwing close callback is swallowed so that it cannot mask a failure which
+        // is already in flight (including unwinding from an exception)
+        for (auto &curr: p->reporters_currently_used) {
+#ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+            try {
+                curr->reporter_close();
+            } catch (...) {
+            }
+#else  // DOCTEST_CONFIG_NO_EXCEPTIONS
+            curr->reporter_close();
+#endif // DOCTEST_CONFIG_NO_EXCEPTIONS
+        }
+
         if (fstr.is_open())
             fstr.close();
 
@@ -5916,6 +5936,10 @@ int Context::run() {
     // setup default reporter if none is given through the command line
     if (p->filters[8].empty())
         p->filters[8].emplace_back("console");
+
+#ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+    try {
+#endif // DOCTEST_CONFIG_NO_EXCEPTIONS
 
     // check to see if any of the registered reporters has been selected
     for (auto &curr: getReporters()) {
@@ -6122,6 +6146,16 @@ int Context::run() {
         qdata.num_data = static_cast<unsigned>(queryResults.size());
         DOCTEST_ITERATE_THROUGH_REPORTERS(report_query, qdata);
     }
+
+#ifndef DOCTEST_CONFIG_NO_EXCEPTIONS
+    } catch (...) {
+        // an exception escaped the run (a throwing reporter callback, a reporter
+        // constructor which didn't complete, etc.) - close and free the reporters
+        // which were fully initialized and rethrow so the original failure isn't masked
+        cleanup_and_return();
+        throw;
+    }
+#endif // DOCTEST_CONFIG_NO_EXCEPTIONS
 
     return cleanup_and_return();
 }

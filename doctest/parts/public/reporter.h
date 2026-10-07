@@ -95,6 +95,12 @@ struct DOCTEST_INTERFACE IReporter {
     // (safe to cache a pointer to the input)
     virtual void test_case_skipped(const TestCaseData &) = 0;
 
+    // called exactly once when the run is over and the reporter is about to be destroyed -
+    // guaranteed for every reporter whose constructor has completed, even on early exits
+    // or when the run is aborted by an exception; exceptions thrown from here are
+    // swallowed so that they cannot mask a failure which is already in flight
+    virtual void reporter_close() {}
+
     DOCTEST_DECLARE_INTERFACE(IReporter)
 
     // can obtain all currently active contexts and stringify them if one wishes to do so

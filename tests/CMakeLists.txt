@@ -102,6 +102,7 @@ doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_platform.cpp DEFINES CMAKE_S
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_string.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_traversal.cpp)
 doctest_add_unit_test(WITH_MAIN SOURCE doctest/test_xml.cpp)
+doctest_add_unit_test(          SOURCE doctest/test_reporter_close.cpp)
 
 # Regression tests
 doctest_add_unit_test(
